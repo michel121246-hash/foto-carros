@@ -23,22 +23,22 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Abra http://localhost:3000. Configure `OPENAI_API_KEY` em `.env.local` para gerar de verdade. `OPENAI_IMAGE_MODEL` usa `gpt-image-1` por padrão. A conta OpenAI precisa ter acesso ao modelo, faturamento ativo e eventuais verificações exigidas pelo provedor. Configure `APP_PASSWORD` para proteger o uso. A senha é digitada em “Acesso ao estúdio”; não é a chave da API e permanece somente na memória da página. Nunca exponha a chave com um prefixo `NEXT_PUBLIC_`.
+Abra http://localhost:3000. Configure `OPENAI_API_KEY` em `.env.local` para gerar de verdade. `OPENAI_IMAGE_MODEL` usa `gpt-image-1` por padrão. A conta OpenAI precisa ter acesso ao modelo, faturamento ativo e eventuais verificações exigidas pelo provedor. Configure `APP_PASSWORD` para proteger o uso. A senha é digitada em “Acesso ao estúdio” e confirmada com o botão “Entrar no estúdio” ou Enter. O servidor valida a senha sem chamar a OpenAI e cria uma sessão assinada, com cookie HttpOnly/Secure/SameSite por 8 horas. A senha digitada é limpa após entrar; nunca vai para localStorage. A sessão é invalidada quando APP_PASSWORD muda. Nunca exponha a chave com um prefixo `NEXT_PUBLIC_`.
 
 ## Fluxo implementado
 
-- Importação por seletor nativo e arrastar/soltar: JPG, JPEG, PNG, HEIC e HEIF, até 20 MB.
+- Importação de 1 a 10 fotos do mesmo veículo, de uma vez ou em seleções sucessivas, por seletor nativo e arrastar/soltar: JPG, JPEG, PNG, HEIC e HEIF, até 20 MB por arquivo. Miniaturas, remoção individual e escolha da foto principal.
 - Prévia imediatamente após selecionar a foto. HEIC não renderizável nativamente mostra a preparação e recebe uma prévia após conversão.
 - HEIC: primeiro tenta o decodificador do navegador; depois carrega `heic2any` dinamicamente. Não força captura pela câmera, para permitir selecionar do app Fotos ou Arquivos no iPhone.
 - Canvas aplica a orientação decodificada pelo navegador, redimensiona para até 2048 px e converte para JPEG. O mesmo arquivo pode ser escolhido novamente; arquivos temporários são liberados da memória.
 - Nove cartões visuais selecionáveis, com uma edição independente por estilo.
 - Proporções finais exatas: 1024×1024, 1024×1280, 864×1536 e 1536×864.
-- A rota `POST /api/edit` envia a fotografia real como multipart para `https://api.openai.com/v1/images/edits`. A imagem retornada é ajustada à proporção escolhida com recorte central, mantendo resolução definida. Como o provedor não oferece todas essas proporções diretamente, o prompt pede margens; o recorte pode remover bordas.
-- Progresso, erros por resultado, ampliação e download JPEG. No Safari, se o download abrir a imagem, use Compartilhar → Salvar Imagem ou Salvar em Arquivos.
+- A rota `POST /api/edit` envia todas as fotos reais como multipart `image[]` (até 10 referências), com instruções para usar a primeira como composição principal e as demais para conferir detalhes, e fidelidade de entrada alta no modelo padrão, para `https://api.openai.com/v1/images/edits`. A imagem retornada é ajustada à proporção escolhida com recorte central, mantendo resolução definida. Como o provedor não oferece todas essas proporções diretamente, o prompt pede margens; o recorte pode remover bordas.
+- Progresso por estilo, mensagens de erro junto ao botão de geração e em cada resultado, ampliação e download JPEG. No Safari, se o download abrir a imagem, use Compartilhar → Salvar Imagem ou Salvar em Arquivos.
 
 O backend confere os bytes reais, limita o tamanho e a quantidade de pixels, rejeita origem externa e protege a geração com uma senha. A produção exige `APP_PASSWORD`. A API nunca recebe comandos arbitrários escritos pelo usuário. Erros do provedor são traduzidos sem encaminhar mensagens potencialmente sensíveis.
 
-Fotos não são armazenadas pelo aplicativo. Os resultados permanecem na memória da aba; recarregar a página limpa a galeria. A foto é enviada à OpenAI somente ao gerar e está sujeita à política de dados do provedor. Cada estilo tem custo independente. Cancelar para novas solicitações e interrompe a conexão do navegador, mas uma edição já iniciada no provedor pode continuar e ser cobrada. A IA pode alterar detalhes do carro; revise resultados antes de uso comercial.
+Fotos não são armazenadas pelo aplicativo. Os resultados permanecem na memória da aba; recarregar a página limpa a galeria. As fotos são enviadas à OpenAI somente ao gerar e estão sujeitas à política de dados do provedor. Cada estilo tem custo independente; referências adicionais também podem aumentar o custo de entrada. Cancelar para novas solicitações e interrompe a conexão do navegador, mas uma edição já iniciada no provedor pode continuar e ser cobrada. A IA pode alterar detalhes do carro; revise resultados antes de uso comercial.
 
 ## Testes
 
@@ -48,9 +48,9 @@ npm run build
 npm run typecheck
 ```
 
-Os testes unitários cobrem formatos do iPhone, conteúdo inválido, tamanho, estilos, proporções, multipart da API, recorte final e proteção do servidor. Usam respostas controladas no teste; o aplicativo nunca usa esses dados. Nenhuma chamada paga real é realizada pelo teste automatizado.
+Os testes unitários cobrem formatos do iPhone, conteúdo inválido, tamanho, estilos, proporções, multipart da API com 5 e 10 referências, recorte final, login com senha Unicode, cookies, expiração, rotação da senha, logout e proteção do servidor. Usam respostas controladas no teste; o aplicativo nunca usa esses dados. Nenhuma chamada paga real é realizada pelo teste automatizado.
 
-`tests/browser-smoke.cjs` verifica o fluxo em Chromium com viewport móvel e desktop. Usa Playwright disponível no ambiente ou definido com `PLAYWRIGHT_PATH`. Execute com o servidor em `http://localhost:3000`, `PLAYWRIGHT_PATH` apontando para o módulo Playwright e `CHROMIUM_PATH` para o executável. Esse teste não substitui Safari/iOS físico.
+`tests/browser-smoke.cjs` verifica o fluxo em Chromium com viewport móvel e desktop. Usa Playwright disponível no ambiente ou definido com `PLAYWRIGHT_PATH`. Execute com o servidor em `http://localhost:3000` (ou defina `TEST_BASE_URL`), `APP_PASSWORD=test-studio-password` e `OPENAI_API_KEY` vazia no ambiente de teste. O script valida o erro real de configuração e intercepta respostas de edição somente no teste. Use `TEST_STUDIO_PASSWORD` caso escolha outra senha de teste. Configure `PLAYWRIGHT_PATH` apontando para o módulo Playwright e `CHROMIUM_PATH` para o executável. Esse teste não substitui Safari/iOS físico.
 
 ### Checklist de aceitação no iPhone
 
@@ -71,7 +71,7 @@ Os testes unitários cobrem formatos do iPhone, conteúdo inválido, tamanho, es
 4. Use um plano/runtime que permita até **300 segundos** para funções. A rota exporta `maxDuration = 300`; o limite efetivo depende do plano. Cada edição usa uma requisição separada e um timeout de 180 segundos para a API.
 5. Configure um domínio e teste em HTTPS no iPhone. Compartilhe a senha apenas com quem pode utilizar os créditos da API.
 
-O JPEG preparado é limitado a 4 MB para ficar abaixo do limite de payload de funções Vercel (4,5 MB incluindo multipart). Em aplicações com múltiplos usuários, substitua a senha compartilhada por autenticação individual e imponha quotas persistentes, fila de trabalhos e storage privado. Não remova a proteção da rota sem implementar controle de acesso equivalente.
+O conjunto de JPEGs preparados é limitado a 3,5 MiB, deixando margem abaixo do limite de payload de funções Vercel (4,5 MB incluindo multipart). Se necessário, o navegador comprime o conjunto de forma progressiva e sequencial. Miniaturas só decodificam arquivos já preparados, evitando abrir dez originais grandes ao mesmo tempo no iPhone. Em aplicações com múltiplos usuários, substitua a senha compartilhada por autenticação individual e imponha quotas persistentes, fila de trabalhos e storage privado. Não remova a proteção da rota sem implementar controle de acesso equivalente.
 
 ### Cloud Run, Render, Railway ou outro host de contêiner
 
@@ -86,5 +86,6 @@ Use o `Dockerfile`, porta 3000. Configure os mesmos segredos no gerenciador do p
 - `lib/styles.ts`: catálogo visual e instruções internas para cada estilo.
 - `lib/editor.ts`: integração real com a API e proporção de saída.
 - `app/api/edit/route.ts`: endpoint privado com validação e erros traduzidos.
+- `app/api/access/route.ts` e `lib/studio-auth.ts`: login explícito, cookie de sessão assinado, status e logout.
 
 Fotografias de referência são exemplos editoriais e não resultados do veículo importado. A imagem principal é uma fotografia do Unsplash (photo-1503376780353-7e6692767b70). As referências são documentadas em `public/styles/CREDITS.md`.
